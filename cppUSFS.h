@@ -263,7 +263,6 @@ class USFS {
 				float BaroAlt;
 				float EstAlt;
 				float RMS_accLin;
-				float mag_declination = 0.0;
 				uint8_t Quat_flag = 0;
 		    uint8_t Gyro_flag = 0;
 		    uint8_t Acc_flag  = 0;
@@ -296,6 +295,7 @@ class USFS {
 				float heading;
 				float angle[2];
 				float qt[4] = {1.0f, 0.0f, 0.0f, 0.0f};
+				float mag_declination = 0.0;
 };
 
 #endif
