@@ -1,9 +1,17 @@
 #include <cstdint>
 #include <vector>
+#include <chrono>
 #include "i2c.h"
+// #include <iomanip>
+// for (int i = 0; i < 12; i++) {
+// 	std::cout << std::hex << std::setw(2) << static_cast<int>(data[i]) << std::endl;
+// }
+// std::cout << std::dec;
 
 #ifndef USFS_H
 #define USFS_H
+
+class USFS;
 
 // Sensor-specific definitions
 // LSM6DSM
@@ -187,6 +195,14 @@
 #define MAG_NORTH 0
 #define MAG_EAST  1
 #define MAG_DOWN  2
+#define NORTH     0
+#define EAST      1
+#define DOWN      2
+
+#define ACC_ORIENTATION(X, Y, Z)      {accADC[NORTH] = +X;       accADC[EAST]  = +Y;      accADC[DOWN]  = +Z;}
+#define ACC_CAL_ORIENTATION(X, Y, Z)  {acc_calADC[0] = +X;       acc_calADC[1] = +Y;      acc_calADC[2] = +Z;}
+#define MAG_ORIENTATION(X, Y, Z)      {magADC[NORTH] = +X;       magADC[EAST]  = +Y;      magADC[DOWN]  = +Z;}
+#define GYRO_ORIENTATION(X, Y, Z)     {gyroADC[0]    = +X;       gyroADC[1]    = +Y;      gyroADC[2]    = +Z;}
 
 class USFS {
     protected:
@@ -198,13 +214,13 @@ class USFS {
         unsigned char rbuf[16];
         // i2c bus functions
         uint8_t readRegister(uint8_t subAddress);
-        void readRegisters(uint8_t subAddress, uint8_t count);
+        void readRegisters(uint8_t subAddress, uint8_t* data, uint8_t count);
         void writeRegister(uint8_t subAddress, uint8_t data);
         void EEPROMReadRegisters(uint8_t subAddress_1, uint8_t subAddress_2, uint8_t* data, uint8_t count);
         void EEPROMWriteRegister(uint8_t subAddress_1, uint8_t subAddress_2, uint8_t data);
         void EEPROMWriteRegisters(uint8_t subAddress_1, uint8_t subAddress_2, uint8_t* data, uint8_t count);
 
-        void i2c_getSixRawADC(uint8_t add, uint8_t reg);
+        void i2c_getSixRawADC(uint8_t reg);
         float uint32_reg_to_float (uint8_t *buf);
         void float_to_bytes (float param_val, uint8_t *buf);
         void USFS_set_gyro_FS (uint16_t gyro_fs);
@@ -226,7 +242,33 @@ class USFS {
         uint8_t Sen_param[35][4];
         uint8_t Accel_Cal_valid = 0;
         uint8_t Sentral_WS_valid = 0;
-        uint8_t eventStatus = 0;
+				uint8_t rawADC[6];
+				int16_t accADC[3];
+				int16_t gyroADC[3];
+				int16_t acc[3];
+				int16_t acc_calADC[3];
+				int16_t magADC[3];
+				int16_t rawPressure;
+				int16_t rawTemperature;
+				int16_t QT_Timestamp;
+				uint16_t calibratingA = 0;
+				int16_t accLIN[3];
+				int16_t accSmooth[3];
+				int64_t a_acc[3] = {0, 0, 0};
+				int64_t b_acc[3] = {0, 0, 0};
+				std::chrono::high_resolution_clock::time_point Start_time;
+				std::chrono::high_resolution_clock::time_point Curr_time;
+				std::chrono::microseconds Diff_time;
+				float TimeStamp;
+				float BaroAlt;
+				float EstAlt;
+				float RMS_accLin;
+				float mag_declination = 0.0;
+				uint8_t Quat_flag = 0;
+		    uint8_t Gyro_flag = 0;
+		    uint8_t Acc_flag  = 0;
+		    uint8_t Mag_flag  = 0;
+		    uint8_t Baro_flag = 0;
     public:
         USFS();
         void ACC_getADC();
@@ -239,6 +281,21 @@ class USFS {
         int16_t Baro_getPress();
         int16_t Baro_getTemp();
         void initSensors();
+				void computeIMU();
+				void FetchEventStatus();
+				void FetchSentralData();
+
+				uint8_t algoStatus = 0;
+				uint8_t eventStatus = 0;
+				float gyroData[3] = {0.0f, 0.0f, 0.0f};
+				float accData[3] = {0.0f, 0.0f, 0.0f};
+				float magData[3] = {0.0f, 0.0f, 0.0f};
+				float LINaccData[3] = {0.0f, 0.0f, 0.0f};
+				float pressure;
+				float temperature;
+				float heading;
+				float angle[2];
+				float qt[4] = {1.0f, 0.0f, 0.0f, 0.0f};
 };
 
 #endif

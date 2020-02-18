@@ -27,7 +27,7 @@ void USFS::initSensors()
   device.tenbit = 0;
   device.delay = 1;
   device.flags = 0;
-  device.page_bytes = 16;
+  device.page_bytes = 32;
   device.iaddr_bytes = 1;
 
   EEPROM_device.bus = bus;
@@ -35,7 +35,7 @@ void USFS::initSensors()
   EEPROM_device.tenbit = 0;
   EEPROM_device.delay = 1;
   EEPROM_device.flags = 0;
-  EEPROM_device.page_bytes = 16;
+  EEPROM_device.page_bytes = 32;
   EEPROM_device.iaddr_bytes = 2;
 
   // Check SENtral status, make sure EEPROM upload of firmware was accomplished
@@ -202,6 +202,139 @@ void USFS::initSensors()
     std::cout << "Sentral initialization complete!" << std::endl;
     std::cout << "" << std::endl;
   #endif
+
+	Start_time = std::chrono::high_resolution_clock::now();
+}
+
+void USFS::i2c_getSixRawADC(uint8_t reg)
+{
+	readRegisters(reg, &rawADC[0], 6);
+}
+
+void USFS::getQUAT()
+{
+  uint8_t rawData[18];
+
+	readRegisters(USFS_QX, &rawData[0], 18);
+  qt[1] = uint32_reg_to_float (&rawData[0]);
+  qt[2] = uint32_reg_to_float (&rawData[4]);
+  qt[3] = uint32_reg_to_float (&rawData[8]);
+  qt[0] = uint32_reg_to_float (&rawData[12]);
+  QT_Timestamp = ((int16_t)(rawData[17]<<8) | rawData[16]);
+}
+
+int16_t USFS::Baro_getPress()
+{
+  uint8_t rawData[2];
+
+	readRegisters(USFS_Baro, &rawData[0], 2);
+  return (int16_t) (((int16_t)rawData[1] << 8) | rawData[0]);
+}
+
+int16_t USFS::Baro_getTemp()
+{
+  uint8_t rawData[2];
+
+	readRegisters(USFS_Temp, &rawData[0], 2);
+  return (int16_t) (((int16_t)rawData[1] << 8) | rawData[0]);
+}
+
+void USFS::Gyro_getADC()
+{
+  USFS::i2c_getSixRawADC(USFS_GX);
+  GYRO_ORIENTATION( ((int16_t)(rawADC[1]<<8) | rawADC[0]),                                                                      // Range: +/- 32768; +/- 2000 deg/sec
+                    ((int16_t)(rawADC[3]<<8) | rawADC[2]),
+                    ((int16_t)(rawADC[5]<<8) | rawADC[4]));
+}
+
+void USFS::ACC_getADC()
+{
+  USFS::i2c_getSixRawADC(USFS_AX);
+  acc[0] = ((int16_t)(rawADC[1]<<8) | rawADC[0]);                                                                    // Scale: 2048cts = 1g
+  acc[1] = ((int16_t)(rawADC[3]<<8) | rawADC[2]);
+  acc[2] = ((int16_t)(rawADC[5]<<8) | rawADC[4]);
+  ACC_ORIENTATION(acc[0],
+                  acc[1],
+                  acc[2]);
+
+  // If Accel Cal active, assign ACC_CAL_ORIENTATION definition to generate calibration values
+  if(calibratingA > 0)
+  {
+    ACC_CAL_ORIENTATION(acc[0],
+                        acc[1],
+                        acc[2]);
+  }
+}
+
+void USFS::LIN_ACC_getADC()
+{
+  USFS::i2c_getSixRawADC(USFS_GP8);
+  accLIN[0] = ((int16_t)(rawADC[1]<<8) | rawADC[0]);                                                                 // Scale: 2048cts = 1g
+  accLIN[1] = ((int16_t)(rawADC[3]<<8) | rawADC[2]);
+  accLIN[2] = ((int16_t)(rawADC[5]<<8) | rawADC[4]);
+}
+
+void USFS::ACC_Common()
+{
+  if (calibratingA == 512)
+  {
+    // Tell the Sentral to send unscaled sensor data
+		writeRegister(USFS_AlgorithmControl, 0x02);
+    std::this_thread::sleep_for(milliseconds(20));
+
+    // Re-read Acc data in raw data mode
+    USFS::ACC_getADC();
+
+  }
+  if (calibratingA > 0)
+  {
+    for (uint8_t axis = 0; axis < 3; axis++)
+    {
+      // Raw Acc data from Sentral is scaled according to sensor range selected; divide by appropriate factor of two to get 1g=2048cts
+      if ((acc_calADC[axis]/(0x10/ACC_SCALE) > 1024))
+      {
+        // Sum up 512 readings
+        a_acc[axis] += acc_calADC[axis]/(0x10/ACC_SCALE);
+      }
+      if ((acc_calADC[axis]/(0x10/ACC_SCALE)) < -1024)
+      {
+        b_acc[axis] += acc_calADC[axis]/(0x10/ACC_SCALE);
+      }
+      // Clear global variables for next reading
+      acc_calADC[axis] = 0;
+    }
+
+    // Calculate averages, and store values in EEPROM at end of calibration
+    if (calibratingA == 1)
+    {
+      for (uint8_t axis = 0; axis < 3; axis++)
+      {
+        if (a_acc[axis]>>9 > 1024)
+        {
+          accZero_max[axis] = a_acc[axis]>>9;
+        }
+        if (b_acc[axis]>>9 < -1024)
+        {
+          accZero_min[axis] = b_acc[axis]>>9;
+        }
+        // Clear global variables for next time
+        a_acc[axis] = 0;
+        b_acc[axis] = 0;
+      }
+
+      // Save accZero to I2C EEPROM
+      // Put the Sentral in pass-thru mode
+      USFS::WS_PassThroughMode();
+
+      // Store accelerometer calibration data to the M24512DFM I2C EEPROM
+      USFS::writeAccCal();
+
+      // Take Sentral out of pass-thru mode and re-start algorithm
+      // Also resumes sending calibrated sensor data to the output registers
+      USFS::WS_Resume();
+    }
+    calibratingA--;
+  }
 }
 
 void USFS::USFS_set_gyro_FS (uint16_t gyro_fs)
@@ -376,6 +509,56 @@ void USFS::USFS_set_WS_params()
   writeRegister(USFS_AlgorithmControl, param);
 }
 
+void USFS::USFS_get_WS_params()
+{
+  uint8_t param = 1;
+  uint8_t STAT;
+
+	writeRegister(USFS_ParamRequest, param);
+  std::this_thread::sleep_for(milliseconds(20));
+
+  // Request parameter transfer procedure
+	writeRegister(USFS_AlgorithmControl, 0x80);
+  std::this_thread::sleep_for(milliseconds(20));
+
+   // Check the parameter acknowledge register and loop until the result matches parameter request byte
+	STAT = readRegister(USFS_ParamAcknowledge);
+  while(!(STAT==param))
+  {
+		STAT = readRegister(USFS_ParamAcknowledge);
+  }
+
+  // Parameter is the decimal value with the MSB set low (default) to indicate a paramter read processs
+  Sen_param[0][0] = readRegister(USFS_SavedParamByte0);
+  Sen_param[0][1] = readRegister(USFS_SavedParamByte1);
+  Sen_param[0][2] = readRegister(USFS_SavedParamByte2);
+  Sen_param[0][3] = readRegister(USFS_SavedParamByte3);
+
+  for(uint8_t i=1; i<35; i++)
+  {
+    param = (i+1);
+		writeRegister(USFS_ParamRequest, param);
+    std::this_thread::sleep_for(milliseconds(20));
+
+    // Check the parameter acknowledge register and loop until the result matches parameter request byte
+    STAT = readRegister(USFS_ParamAcknowledge);
+    while(!(STAT==param))
+    {
+      STAT = readRegister(USFS_ParamAcknowledge);
+    }
+		Sen_param[i][0] = readRegister(USFS_SavedParamByte0);
+	  Sen_param[i][1] = readRegister(USFS_SavedParamByte1);
+	  Sen_param[i][2] = readRegister(USFS_SavedParamByte2);
+	  Sen_param[i][3] = readRegister(USFS_SavedParamByte3);
+  }
+  // Parameter request = 0 to end parameter transfer process
+	writeRegister(USFS_ParamRequest, 0x00);
+  std::this_thread::sleep_for(milliseconds(20));
+
+  // Re-start algorithm
+	writeRegister(USFS_AlgorithmControl, 0x00);
+  std::this_thread::sleep_for(milliseconds(20));
+}
 
 void USFS::USFS_acc_cal_upload()
 {
@@ -465,6 +648,62 @@ void USFS::USFS_acc_cal_upload()
   writeRegister(USFS_GP56, cal_num_byte[1]);
 }
 
+void USFS::Mag_getADC()
+{
+  USFS::i2c_getSixRawADC(USFS_MX);
+  MAG_ORIENTATION( (int16_t)((rawADC[1]<<8) | rawADC[0]),
+                   (int16_t)((rawADC[3]<<8) | rawADC[2]),
+                   (int16_t)((rawADC[5]<<8) | rawADC[4]));
+}
+
+void USFS::WS_PassThroughMode()
+{
+  uint8_t stat = 0;
+
+  // Put SENtral in standby mode
+	writeRegister(USFS_AlgorithmControl, 0x01);
+  std::this_thread::sleep_for(milliseconds(5));
+
+  // Place SENtral in pass-through mode
+	writeRegister(USFS_PassThruControl, 0x01);
+  std::this_thread::sleep_for(milliseconds(5));
+	stat = readRegister(USFS_PassThruStatus);
+  std::this_thread::sleep_for(milliseconds(5));
+  while(!(stat & 0x01))
+  {
+    stat = readRegister(USFS_PassThruStatus);
+    std::this_thread::sleep_for(milliseconds(5));
+  }
+}
+
+void USFS::WS_Resume()
+{
+  uint8_t stat = 0;
+
+  // Cancel pass-through mode
+	writeRegister(USFS_PassThruControl, 0x00);
+  std::this_thread::sleep_for(milliseconds(5));
+  stat = readRegister(USFS_PassThruStatus);
+  while((stat & 0x01))
+  {
+    stat = readRegister(USFS_PassThruStatus);
+    std::this_thread::sleep_for(milliseconds(5));
+  }
+
+  // Re-start algorithm
+	writeRegister(USFS_AlgorithmControl, 0x00);
+  std::this_thread::sleep_for(milliseconds(5));
+  stat = readRegister(USFS_AlgorithmStatus);
+  while((stat & 0x01))
+  {
+    stat = readRegister(USFS_AlgorithmStatus);
+    std::this_thread::sleep_for(milliseconds(5));
+  }
+
+  // Read event status register to clear interrupt
+  eventStatus = readRegister(USFS_EventStatus);
+}
+
 void USFS::readSenParams()
 {
   uint8_t data[140];
@@ -535,8 +774,8 @@ void USFS::readAccelCal()
   EEPROMReadRegisters(0x80, 0x8c, &data[0], 12);
   for (axis = 0; axis < 3; axis++)
   {
-    accZero_max[axis] = ((int16_t)(rbuf[(2*axis + 1)]<<8) | rbuf[2*axis]);
-    accZero_min[axis] = ((int16_t)(rbuf[(2*axis + 7)]<<8) | rbuf[(2*axis + 6)]);
+    accZero_max[axis] = ((int16_t)(data[(2*axis + 1)]<<8) | data[2*axis]);
+    accZero_min[axis] = ((int16_t)(data[(2*axis + 7)]<<8) | data[(2*axis + 6)]);
   }
 }
 
@@ -591,7 +830,7 @@ float USFS::uint32_reg_to_float (uint8_t *buf)
 
 uint8_t USFS::readRegister(uint8_t subAddress)
 {
-    readRegisters(subAddress, 1);
+    readRegisters(subAddress, rbuf, 1);
     return rbuf[0];
 }
 
@@ -603,16 +842,16 @@ void USFS::writeRegister(uint8_t subAddress, uint8_t data)
     }
 }
 
-void USFS::readRegisters(uint8_t subAddress, uint8_t count)
+void USFS::readRegisters(uint8_t subAddress, uint8_t* data, uint8_t count)
 {
-    if (i2c_read(&device, subAddress, rbuf, count) != count) {
+    if (i2c_read(&device, subAddress, data, count) != count) {
       std::cout << "READ ERROR" << std::endl;
     }
 }
 
 void USFS::EEPROMWriteRegister(uint8_t subAddress_1, uint8_t subAddress_2, uint8_t data)
 {
-    uint16_t subAddress = ((uint16_t)subAddress_2 << 8) | subAddress_1;
+    uint16_t subAddress = ((uint16_t)subAddress_1 << 8) | subAddress_2;
     buf[0] = data;
     if (i2c_ioctl_write(&EEPROM_device, subAddress, buf, 1) != 1) {
       std::cout << "WRITE ERROR" << std::endl;
@@ -621,7 +860,7 @@ void USFS::EEPROMWriteRegister(uint8_t subAddress_1, uint8_t subAddress_2, uint8
 
 void USFS::EEPROMReadRegisters(uint8_t subAddress_1, uint8_t subAddress_2, uint8_t* data, uint8_t count)
 {
-    uint16_t subAddress = ((uint16_t)subAddress_2 << 8) | subAddress_1;
+    uint16_t subAddress = ((uint16_t)subAddress_1 << 8) | subAddress_2;
     if (i2c_ioctl_read(&EEPROM_device, subAddress, data, count) != count) {
       std::cout << "READ ERROR" << std::endl;
     }
@@ -629,7 +868,7 @@ void USFS::EEPROMReadRegisters(uint8_t subAddress_1, uint8_t subAddress_2, uint8
 
 void USFS::EEPROMWriteRegisters(uint8_t subAddress_1, uint8_t subAddress_2, uint8_t* data, uint8_t count)
 {
-    uint16_t subAddress = ((uint16_t)subAddress_2 << 8) | subAddress_1;
+    uint16_t subAddress = ((uint16_t)subAddress_1 << 8) | subAddress_2;
     for (uint8_t i = 0; i < count; i++) {
       buf[i] = data[i];
     }
@@ -638,7 +877,172 @@ void USFS::EEPROMWriteRegisters(uint8_t subAddress_1, uint8_t subAddress_2, uint
     }
 }
 
+void USFS::computeIMU()
+{
+	float a11, a21, a31, a32, a33;
+  float yaw;
+  static float buff_roll = 0.0f, buff_pitch = 0.0f, buff_heading = 0.0f;
+
+  // Pass-thru for future filter experimentation
+  accSmooth[0] = accADC[0];
+  accSmooth[1] = accADC[1];
+  accSmooth[2] = accADC[2];
+
+  USFS::getQUAT();
+
+  // Only five elements of the rotation matrix are necessary to calculate the three Euler angles
+  a11 = qt[0]*qt[0]+qt[1]*qt[1]
+                   -qt[2]*qt[2]-qt[3]*qt[3];
+  a21 = 2.0f*(qt[0]*qt[3]+qt[1]*qt[2]);
+  a31 = 2.0f*(qt[1]*qt[3]-qt[0]*qt[2]);
+  a32 = 2.0f*(qt[0]*qt[1]+qt[2]*qt[3]);
+  a33 = qt[0]*qt[0]-qt[1]*qt[1]
+                   -qt[2]*qt[2]+qt[3]*qt[3];
+
+  // Pass-thru for future filter experimentation
+  buff_roll    = (atan2(a32, a33))*(57.2957795f);                                                          // Roll Right +ve
+  buff_pitch   = -(asin(a31))*(57.2957795f);                                                                          // Pitch Up +ve
+  buff_heading = (atan2(a21, a11))*(57.2957795f);                                                          // Yaw CW +ve
+
+  angle[0] = buff_roll;
+  angle[1] = buff_pitch;
+  yaw      = buff_heading;
+  heading  = yaw + mag_declination;
+  if(heading < 0.0f) heading += 360.0f;                                                                               // Convert heading to 0 - 360deg range
+	Curr_time = std::chrono::high_resolution_clock::now();
+	Diff_time = duration_cast<microseconds>(Curr_time - Start_time);
+	TimeStamp = Diff_time.count()/1000000.0f;
+}
+
+void USFS::Save_Sentral_WS_params()
+{
+      USFS::USFS_get_WS_params();
+
+      // Put the Sentral in pass-thru mode
+      USFS::WS_PassThroughMode();
+
+      // Store WarmStart data to the M24512DFM I2C EEPROM
+      USFS::writeSenParams();
+
+      // Take Sentral out of pass-thru mode and re-start algorithm
+      USFS::WS_Resume();
+}
+
+void USFS::FetchEventStatus()
+{
+    eventStatus = (int)readRegister(USFS_EventStatus);
+
+    if(eventStatus & 0x04) Quat_flag = 1;
+    if(eventStatus & 0x20) Gyro_flag = 1;
+    if(eventStatus & 0x10) Acc_flag  = 1;
+    if(eventStatus & 0x08) Mag_flag  = 1;
+    if(eventStatus & 0x40) Baro_flag = 1;
+    algoStatus = (int)readRegister(USFS_AlgorithmStatus);
+}
+
+void USFS::FetchSentralData()
+{
+  if(Gyro_flag)
+  {
+    Gyro_getADC();
+    for(uint8_t i=0; i<3; i++)
+    {
+      gyroData[i] = (float)gyroADC[i]*DPS_PER_COUNT;
+    }
+    Gyro_flag = 0;
+  }
+  if(Quat_flag)
+  {
+    computeIMU();
+    Quat_flag = 0;
+  }
+  if(Acc_flag)
+  {
+    ACC_getADC();
+    ACC_Common();
+    for(uint8_t i=0; i<3; i++)
+    {
+      accData[i] = (float)accADC[i]*G_PER_COUNT;
+      LINaccData[i] = (float)accLIN[i]*G_PER_COUNT;
+    }
+    Acc_flag = 0;
+  }
+  if(Mag_flag)
+  {
+    Mag_getADC();
+    for(uint8_t i=0; i<3; i++)
+    {
+      magData[i] = (float)magADC[i]*SENTRAL_UT_PER_COUNT;
+    }
+    Mag_flag = 0;
+  }
+  if(Baro_flag)
+  {
+    rawPressure    = Baro_getPress();
+    pressure       = (float)rawPressure*0.01f +1013.25f;                                       // Pressure in mBar
+    rawTemperature = Baro_getTemp();
+    temperature    = (float)rawTemperature*0.01;                                               // Temperature in degrees C
+    Baro_flag      = 0;
+  }
+}
+
 int main(int argc, char *argv[])
 {
+	USFS imu;
+	imu.initSensors();
+	while(1) {
+		imu.FetchEventStatus();
+		imu.FetchSentralData();
+		// Algorithm status
+      std::cout << "Algorithm Status = ";
+			std::cout << (int)imu.algoStatus << std::endl << std::endl;
 
+      // Sentral_0 sensor and raw quaternion outout
+      std::cout << "ax_0 = ";
+			std::cout << (int)(1000.0f*imu.accData[0]);
+			std::cout << " ay_0 = ";
+			std::cout << (int)(1000.0f*imu.accData[1]);
+      std::cout << " az_0 = ";
+			std::cout << (int)(1000.0f*imu.accData[2]);
+			std::cout << " mg" << std::endl;
+      std::cout << "gx_0 = ";
+			std::cout << imu.gyroData[0];
+			std::cout << " gy_0 = ";
+			std::cout << imu.gyroData[1];
+      std::cout << " gz_0 = ";
+			std::cout << imu.gyroData[2];
+			std::cout << " deg/s" << std::endl;
+      std::cout << "mx_0 = ";
+			std::cout << (int)imu.magData[0];
+			std::cout << " my_0 = ";
+			std::cout << (int)imu.magData[1];
+      std::cout << " mz_0 = ";
+			std::cout << (int)imu.magData[2];
+			std::cout << " uT" << std::endl << std::endl;
+      std::cout << "Sentral_0 Quaternion (NED):" << std::endl;
+			std::cout << "Q0_0 = ";
+			std::cout << imu.qt[0];
+      std::cout << " Qx_0 = ";
+			std::cout << imu.qt[1];
+			std::cout << " Qy_0 = ";
+			std::cout << imu.qt[2];
+      std::cout << " Qz_0 = ";
+			std::cout << imu.qt[3] << std::endl << std::endl;
+
+      // Euler angles
+      std::cout << "Sentral_0 Yaw, Pitch, Roll: ";
+      std::cout << imu.heading;
+			std::cout << ", ";
+			std::cout << imu.angle[1];
+			std::cout << ", ";
+			std::cout << imu.angle[0] << std::endl << std::endl;
+
+      // Temperature and pressure
+      std::cout << "Baro Pressure: ";
+			std::cout << imu.pressure;
+			std::cout << " mbar" << std::endl;
+      std::cout << "Baro Temperature: ";
+			std::cout << imu.temperature;
+			std::cout << " deg C" << std::endl << std::endl;
+	}
 }
