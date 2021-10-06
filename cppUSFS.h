@@ -236,6 +236,7 @@ class USFS {
         void writeSenParams();
         void readAccelCal();
         void writeAccCal();
+        void startSentral();
 
         int16_t accZero_max[3];
         int16_t accZero_min[3];
