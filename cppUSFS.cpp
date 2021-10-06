@@ -993,55 +993,55 @@ int main(int argc, char *argv[])
     imu.FetchEventStatus();
     imu.FetchSentralData();
     // Algorithm status
-      std::cout << "Algorithm Status = ";
-      std::cout << (int)imu.algoStatus << std::endl << std::endl;
+    std::cout << "Algorithm Status = ";
+    std::cout << (int)imu.algoStatus << std::endl << std::endl;
 
-      // Sentral_0 sensor and raw quaternion outout
-      std::cout << "ax_0 = ";
-      std::cout << (int)(1000.0f*imu.accData[0]);
-      std::cout << " ay_0 = ";
-      std::cout << (int)(1000.0f*imu.accData[1]);
-      std::cout << " az_0 = ";
-      std::cout << (int)(1000.0f*imu.accData[2]);
-      std::cout << " mg" << std::endl;
-      std::cout << "gx_0 = ";
-      std::cout << imu.gyroData[0];
-      std::cout << " gy_0 = ";
-      std::cout << imu.gyroData[1];
-      std::cout << " gz_0 = ";
-      std::cout << imu.gyroData[2];
-      std::cout << " deg/s" << std::endl;
-      std::cout << "mx_0 = ";
-      std::cout << (int)imu.magData[0];
-      std::cout << " my_0 = ";
-      std::cout << (int)imu.magData[1];
-      std::cout << " mz_0 = ";
-      std::cout << (int)imu.magData[2];
-      std::cout << " uT" << std::endl << std::endl;
-      std::cout << "Sentral_0 Quaternion (NED):" << std::endl;
-      std::cout << "Q0_0 = ";
-      std::cout << imu.qt[0];
-      std::cout << " Qx_0 = ";
-      std::cout << imu.qt[1];
-      std::cout << " Qy_0 = ";
-      std::cout << imu.qt[2];
-      std::cout << " Qz_0 = ";
-      std::cout << imu.qt[3] << std::endl << std::endl;
+    // Sentral_0 sensor and raw quaternion outout
+    std::cout << "ax_0 = ";
+    std::cout << (int)(1000.0f*imu.accData[0]);
+    std::cout << " ay_0 = ";
+    std::cout << (int)(1000.0f*imu.accData[1]);
+    std::cout << " az_0 = ";
+    std::cout << (int)(1000.0f*imu.accData[2]);
+    std::cout << " mg" << std::endl;
+    std::cout << "gx_0 = ";
+    std::cout << imu.gyroData[0];
+    std::cout << " gy_0 = ";
+    std::cout << imu.gyroData[1];
+    std::cout << " gz_0 = ";
+    std::cout << imu.gyroData[2];
+    std::cout << " deg/s" << std::endl;
+    std::cout << "mx_0 = ";
+    std::cout << (int)imu.magData[0];
+    std::cout << " my_0 = ";
+    std::cout << (int)imu.magData[1];
+    std::cout << " mz_0 = ";
+    std::cout << (int)imu.magData[2];
+    std::cout << " uT" << std::endl << std::endl;
+    std::cout << "Sentral_0 Quaternion (NED):" << std::endl;
+    std::cout << "Q0_0 = ";
+    std::cout << imu.qt[0];
+    std::cout << " Qx_0 = ";
+    std::cout << imu.qt[1];
+    std::cout << " Qy_0 = ";
+    std::cout << imu.qt[2];
+    std::cout << " Qz_0 = ";
+    std::cout << imu.qt[3] << std::endl << std::endl;
 
-      // Euler angles
-      std::cout << "Sentral_0 Yaw, Pitch, Roll: ";
-      std::cout << imu.heading;
-      std::cout << ", ";
-      std::cout << imu.angle[1];
-      std::cout << ", ";
-      std::cout << imu.angle[0] << std::endl << std::endl;
+    // Euler angles
+    std::cout << "Sentral_0 Yaw, Pitch, Roll: ";
+    std::cout << imu.heading;
+    std::cout << ", ";
+    std::cout << imu.angle[1];
+    std::cout << ", ";
+    std::cout << imu.angle[0] << std::endl << std::endl;
 
-      // Temperature and pressure
-      std::cout << "Baro Pressure: ";
-      std::cout << imu.pressure;
-      std::cout << " mbar" << std::endl;
-      std::cout << "Baro Temperature: ";
-      std::cout << imu.temperature;
-      std::cout << " deg C" << std::endl << std::endl;
+    // Temperature and pressure
+    std::cout << "Baro Pressure: ";
+    std::cout << imu.pressure;
+    std::cout << " mbar" << std::endl;
+    std::cout << "Baro Temperature: ";
+    std::cout << imu.temperature;
+    std::cout << " deg C" << std::endl << std::endl;
   }
 }
