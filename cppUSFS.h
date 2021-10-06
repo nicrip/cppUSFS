@@ -19,7 +19,7 @@ class USFS;
 #define LSM6DSM_GYRO_LPF_314        0x02
 #define LSM6DSM_GYRO_LPF_223        0x01
 #define LSM6DSM_GYRO_LPF_655        0x03
-#define LSM6DSM_GYRO_DLPF_CFG       LSM6DSM_GYRO_LPF_167
+#define LSM6DSM_GYRO_DLPF_CFG       LSM6DSM_GYRO_LPF_655
 #define LSM6DSM_ACC_LPF_ODR_DIV2    0x00
 #define LSM6DSM_ACC_LPF_ODR_DIV4    0x01
 #define LSM6DSM_ACC_LPF_ODR_DIV9    0x02
@@ -30,7 +30,7 @@ class USFS;
 // LIS2MDL
 #define LIS2MDL_MAG_LPF_ODR_DIV2    0x00
 #define LIS2MDL_MAG_LPF_ODR_DIV4    0x01
-#define LIS2MDL_MAG_DLPF_ODR_CFG    LIS2MDL_MAG_LPF_ODR_DIV4
+#define LIS2MDL_MAG_DLPF_ODR_CFG    LIS2MDL_MAG_LPF_ODR_DIV2
 // LPS22HB
 #define LPS22HB_BARO_LPF_ODR_DIV2   0x00
 #define LPS22HB_BARO_LPF_ODR_DIV9   0x01
@@ -54,7 +54,7 @@ class USFS;
 #define GYRO_ODR_52HZ               0x05
 #define GYRO_ODR_26HZ               0x02
 #define GYRO_ODR_12HZ               0x01
-#define GYRO_ODR                    GYRO_ODR_834HZ
+#define GYRO_ODR                    GYRO_ODR_208HZ
 #define MAG_ODR_100HZ               0x64
 #define MAG_ODR_50HZ                0x32
 #define MAG_ODR_20HZ                0x14
@@ -84,7 +84,7 @@ class USFS;
 #define GYRO_SCALE_500DPS           0x1F4
 #define GYRO_SCALE_1000DPS          0x3E8
 #define GYRO_SCALE_2000DPS          0x7D0
-#define GYRO_SCALE                  GYRO_SCALE_2000DPS
+#define GYRO_SCALE                  GYRO_SCALE_125DPS
 #define MAG_SCALE_4915UT            0x133
 #define MAG_SCALE                   MAG_SCALE_4915UT
 #define DPS_PER_COUNT               0.1525878906
@@ -242,32 +242,32 @@ class USFS {
         uint8_t Sen_param[35][4];
         uint8_t Accel_Cal_valid = 0;
         uint8_t Sentral_WS_valid = 0;
-				uint8_t rawADC[6];
-				int16_t accADC[3];
-				int16_t gyroADC[3];
-				int16_t acc[3];
-				int16_t acc_calADC[3];
-				int16_t magADC[3];
-				int16_t rawPressure;
-				int16_t rawTemperature;
-				int16_t QT_Timestamp;
-				uint16_t calibratingA = 0;
-				int16_t accLIN[3];
-				int16_t accSmooth[3];
-				int64_t a_acc[3] = {0, 0, 0};
-				int64_t b_acc[3] = {0, 0, 0};
-				std::chrono::high_resolution_clock::time_point Start_time;
-				std::chrono::high_resolution_clock::time_point Curr_time;
-				std::chrono::microseconds Diff_time;
-				float TimeStamp;
-				float BaroAlt;
-				float EstAlt;
-				float RMS_accLin;
-				uint8_t Quat_flag = 0;
-		    uint8_t Gyro_flag = 0;
-		    uint8_t Acc_flag  = 0;
-		    uint8_t Mag_flag  = 0;
-		    uint8_t Baro_flag = 0;
+        uint8_t rawADC[6];
+        int16_t accADC[3];
+        int16_t gyroADC[3];
+        int16_t acc[3];
+        int16_t acc_calADC[3];
+        int16_t magADC[3];
+        int16_t rawPressure;
+        int16_t rawTemperature;
+        int16_t QT_Timestamp;
+        uint16_t calibratingA = 0;
+        int16_t accLIN[3];
+        int16_t accSmooth[3];
+        int64_t a_acc[3] = {0, 0, 0};
+        int64_t b_acc[3] = {0, 0, 0};
+        std::chrono::high_resolution_clock::time_point Start_time;
+        std::chrono::high_resolution_clock::time_point Curr_time;
+        std::chrono::microseconds Diff_time;
+        float TimeStamp;
+        float BaroAlt;
+        float EstAlt;
+        float RMS_accLin;
+        uint8_t Quat_flag = 0;
+        uint8_t Gyro_flag = 0;
+        uint8_t Acc_flag  = 0;
+        uint8_t Mag_flag  = 0;
+        uint8_t Baro_flag = 0;
     public:
         USFS();
         void ACC_getADC();
@@ -280,22 +280,22 @@ class USFS {
         int16_t Baro_getPress();
         int16_t Baro_getTemp();
         void initSensors();
-				void computeIMU();
-				void FetchEventStatus();
-				void FetchSentralData();
+        void computeIMU();
+        void FetchEventStatus();
+        void FetchSentralData();
 
-				uint8_t algoStatus = 0;
-				uint8_t eventStatus = 0;
-				float gyroData[3] = {0.0f, 0.0f, 0.0f};
-				float accData[3] = {0.0f, 0.0f, 0.0f};
-				float magData[3] = {0.0f, 0.0f, 0.0f};
-				float LINaccData[3] = {0.0f, 0.0f, 0.0f};
-				float pressure;
-				float temperature;
-				float heading;
-				float angle[2];
-				float qt[4] = {1.0f, 0.0f, 0.0f, 0.0f};
-				float mag_declination = 0.0;
+        uint8_t algoStatus = 0;
+        uint8_t eventStatus = 0;
+        float gyroData[3] = {0.0f, 0.0f, 0.0f};
+        float accData[3] = {0.0f, 0.0f, 0.0f};
+        float magData[3] = {0.0f, 0.0f, 0.0f};
+        float LINaccData[3] = {0.0f, 0.0f, 0.0f};
+        float pressure;
+        float temperature;
+        float heading;
+        float angle[2];
+        float qt[4] = {1.0f, 0.0f, 0.0f, 0.0f};
+        float mag_declination = 0.0;
 };
 
 #endif
